@@ -17,8 +17,8 @@ enum Snapshots {
                 while delegate.disk.progress != nil { try? await Task.sleep(for: .milliseconds(500)) }
                 let r = delegate.disk.result
                 print("scan: \(Int(Date().timeIntervalSince(start))) s, root \(Fmt.bytes(r?.root.size ?? 0)), skipped \(r?.skipped.count ?? 0)")
-                for item in delegate.disk.allTop.prefix(10) { print("  \(Fmt.bytes(item.size))  \(item.kind)  \(item.path)") }
             }
+            for item in delegate.disk.allTop.prefix(14) { print("  \(Fmt.bytes(item.size))  \(item.kind)  \(item.path)") }
             try? await Task.sleep(for: .milliseconds(600))
             delegate.processes.refresh()   // second sample carries CPU %
             for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
