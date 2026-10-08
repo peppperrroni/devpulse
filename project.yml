@@ -1,0 +1,38 @@
+name: DevPulse
+options:
+  bundleIdPrefix: com.peppperrroni
+  deploymentTarget:
+    macOS: "26.0"
+packages:
+  DevPulseCore:
+    path: Packages/DevPulseCore
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  DevPulse:
+    type: application
+    platform: macOS
+    sources:
+      - DevPulseApp
+    dependencies:
+      - package: DevPulseCore
+    info:
+      path: DevPulseApp/Info.plist
+      properties:
+        CFBundleDisplayName: DevPulse
+        CFBundleDevelopmentRegion: ru
+        LSUIElement: true
+        NSHumanReadableCopyright: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.peppperrroni.devpulse
+        PRODUCT_NAME: DevPulse
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Development: peppperrroni@gmail.com (5YY272N32R)"
+        DEVELOPMENT_TEAM: ZGPM9P8T4A
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        SWIFT_STRICT_CONCURRENCY: complete
