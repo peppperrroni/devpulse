@@ -11,15 +11,14 @@ final class ProcessStore {
     private(set) var forceKillOffered: Set<pid_t> = []
 
     @ObservationIgnored private let sampler = ProcessSampler()
-    @ObservationIgnored private var clients = 0
+    @ObservationIgnored private var visibility = VisibilityTracker()
     @ObservationIgnored private var loop: Task<Void, Never>?
 
     var top5: [ProcessEntry] { Array(processes.prefix(5)) }
 
     /// Sampling runs only while the popover or the window is visible.
-    func attach() {
-        clients += 1
-        guard loop == nil else { return }
+    func attach(_ client: String) {
+        guard visibility.show(client) else { return }
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 self?.refresh()
@@ -28,12 +27,10 @@ final class ProcessStore {
         }
     }
 
-    func detach() {
-        clients = max(0, clients - 1)
-        if clients == 0 {
-            loop?.cancel()
-            loop = nil
-        }
+    func detach(_ client: String) {
+        guard visibility.hide(client) else { return }
+        loop?.cancel()
+        loop = nil
     }
 
     func refresh() {

@@ -25,6 +25,8 @@ public struct Deleter: Sendable {
 
     /// Returns the resolved path that is safe to remove.
     public func validate(_ path: String) throws(DeleteRefusal) -> String {
+        // A relative path would resolve against the process cwd, not home.
+        guard path.hasPrefix("/") else { throw .outsideHome }
         let resolved = Self.resolve(path)
         guard resolved.hasPrefix(home + "/") else { throw .outsideHome }
         guard !ProtectedPaths.isProtectedOrAncestor(resolved, home: home) else { throw .protected }

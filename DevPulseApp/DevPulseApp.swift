@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            processes.attach()
+            processes.attach("popover")
             processes.refresh()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
@@ -64,7 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     func popoverDidClose(_ notification: Notification) {
-        processes.detach()
+        processes.detach("popover")
     }
 
     func cleanerView() -> some View {
@@ -86,12 +86,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             window.center()
             cleanerWindow = window
         }
-        if cleanerWindow?.isVisible == false { processes.attach() }
+        processes.attach("window")
         NSApp.activate()
+        cleanerWindow?.deminiaturize(nil)
         cleanerWindow?.makeKeyAndOrderFront(nil)
     }
 
     func windowWillClose(_ notification: Notification) {
-        processes.detach()
+        processes.detach("window")
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        processes.detach("window")
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        processes.attach("window")
     }
 }

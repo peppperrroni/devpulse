@@ -34,6 +34,18 @@ struct DeleterTests {
         #expect(throws: DeleteRefusal.outsideHome) { try d.validate(t.root.path + "/Library/../..") }
     }
 
+    @Test func relativePathsAreRefused() throws {
+        // Relative input would resolve against the process cwd, not against home.
+        let t = try TempTree()
+        _ = try t.dir("Projects")
+        let d = Deleter(home: t.root.path)
+        FileManager.default.changeCurrentDirectoryPath(t.root.path)
+        #expect(throws: DeleteRefusal.outsideHome) { try d.validate("Projects") }
+        #expect(throws: DeleteRefusal.outsideHome) { try d.validate("Library/..") }
+        #expect(throws: DeleteRefusal.outsideHome) { try d.validate("~/Library/Developer/../..") }
+        #expect(FileManager.default.fileExists(atPath: t.root.appending(path: "Projects").path))
+    }
+
     @Test func symlinkPointingOutsideIsRefused() throws {
         let t = try TempTree()
         let outside = try TempTree()

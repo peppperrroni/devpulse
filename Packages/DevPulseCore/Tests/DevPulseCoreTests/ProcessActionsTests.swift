@@ -18,6 +18,25 @@ struct ProcessActionsTests {
         #expect(ProcessActions.isActionable(100) || 100 == getpid())
     }
 
+    private func entry(_ pid: pid_t, _ path: String = "/usr/bin/x") -> ProcessEntry {
+        ProcessEntry(pid: pid, name: "x", path: path, memory: 1, cpuPercent: 0, isApp: false)
+    }
+
+    @Test func loginwindowIsNotActionable() {
+        // SIGTERM to loginwindow logs the whole session out.
+        let lw = entry(405, "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow")
+        #expect(!ProcessActions.isActionable(lw))
+        #expect(ProcessActions.isActionable(entry(405)))
+    }
+
+    @Test func targetsAreOnlyVisibleActionableSelectedRows() {
+        let visible = [entry(500), entry(501), entry(1),
+                       entry(405, "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow")]
+        // 600 is selected but hidden by the filter (or exited); 502 is not selected.
+        let targets = ProcessActions.targets(selected: [500, 600, 1, 405], visible: visible + [entry(502)])
+        #expect(targets == [500])
+    }
+
     @Test func sigtermStopsChild() throws {
         let p = try spawnSleep()
         try ProcessActions.signal(p.processIdentifier, SIGTERM)

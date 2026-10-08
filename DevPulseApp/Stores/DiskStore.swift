@@ -35,24 +35,29 @@ final class DiskStore {
         (result?.skipped.filter { $0.hasPrefix(home + "/Library") }.count ?? 0) > 20
     }
 
-    var isStale: Bool {
-        guard let result else { return true }
-        return Date().timeIntervalSince(result.date) > Double(intervalHours) * 3600
+    /// When the last background scan started; a cancelled one still counts, so ✕ is
+    /// not undone by the next scheduler tick.
+    @ObservationIgnored private var lastAttempt: Date?
+
+    var isDue: Bool {
+        ScanSchedule.isDue(lastScan: result?.date, lastAttempt: lastAttempt, intervalHours: intervalHours, now: Date())
     }
 
-    /// Checks every 5 minutes whether the cache is older than the interval.
+    /// Checks every 5 minutes whether a background scan is due.
     func start() {
         guard scheduler == nil else { return }
         scheduler = Task { [weak self] in
             while !Task.isCancelled {
-                if let self, self.isStale, self.progress == nil { self.rescan() }
+                if let self, self.isDue, self.progress == nil { self.rescan() }
                 try? await Task.sleep(for: .seconds(300))
             }
         }
     }
 
+    /// Starts a scan now (the ⟳ button calls this directly, regardless of schedule).
     func rescan() {
         guard progress == nil else { return }
+        lastAttempt = Date()
         progress = ScanProgress(bytes: 0, items: 0)
         let root = URL(fileURLWithPath: home)
         // The store lives for the whole app run, so a strong capture is fine and

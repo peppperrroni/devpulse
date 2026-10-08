@@ -16,12 +16,14 @@ struct ProcessesTab<Tabs: View>: View {
     }
 
     private var selectedApp: ProcessEntry? {
-        guard navigation.selectedPIDs.count == 1, let pid = navigation.selectedPIDs.first else { return nil }
-        return store.processes.first { $0.pid == pid && $0.isApp }
+        let targets = actionable
+        guard targets.count == 1, let pid = targets.first else { return nil }
+        return rows.first { $0.pid == pid && $0.isApp }
     }
 
+    /// Only rows the user can see: a selection hidden by the filter is never acted on.
     private var actionable: Set<pid_t> {
-        navigation.selectedPIDs.filter(ProcessActions.isActionable)
+        ProcessActions.targets(selected: navigation.selectedPIDs, visible: rows)
     }
 
     var body: some View {
