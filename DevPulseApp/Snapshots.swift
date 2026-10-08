@@ -18,23 +18,15 @@ enum Snapshots {
                        to: dir.appending(path: "popover-\(name).png"))
                 render(statusTitle(delegate), size: NSSize(width: 160, height: 24), appearance: appearance,
                        to: dir.appending(path: "status-\(name).png"))
-                for view in extraViews(delegate) {
-                    render(view.view, size: view.size, appearance: appearance,
-                           to: dir.appending(path: "\(view.name)-\(name).png"))
+                for tab in [CleanerTab.processes, .files] {
+                    delegate.navigation.tab = tab
+                    render(delegate.cleanerView(), size: NSSize(width: 760, height: 520), appearance: appearance,
+                           to: dir.appending(path: "window-\(tab)-\(name).png"))
                 }
             }
             NSApp.terminate(nil)
         }
     }
-
-    struct Extra {
-        let name: String
-        let size: NSSize
-        let view: AnyView
-    }
-
-    /// Window tabs register here once they exist.
-    nonisolated(unsafe) static var extraViews: (AppDelegate) -> [Extra] = { _ in [] }
 
     private static func statusTitle(_ delegate: AppDelegate) -> some View {
         Text(AttributedString(StatusTitle.make(delegate.system.snapshot)))

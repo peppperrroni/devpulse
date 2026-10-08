@@ -12,13 +12,14 @@ struct DevPulseApp: App {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     let system = SystemStore()
     let processes = ProcessStore()
     let disk = DiskStore()
     let navigation = Navigation()
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
+    private var cleanerWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Fonts.register()
@@ -66,11 +67,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         processes.detach()
     }
 
+    func cleanerView() -> some View {
+        CleanerView()
+            .environment(system).environment(processes).environment(disk).environment(navigation)
+    }
+
     func showCleaner(tab: CleanerTab, pid: pid_t?, path: String?) {
         popover.performClose(nil)
         navigation.tab = tab
         if let pid { navigation.selectedPIDs = [pid] }
         if let path { navigation.selectedPaths = [path] }
-        // The window itself is added in Task 11.
+        if cleanerWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(rootView: cleanerView()))
+            window.title = "DevPulse"
+            window.setContentSize(NSSize(width: 760, height: 520))
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            window.center()
+            cleanerWindow = window
+        }
+        if cleanerWindow?.isVisible == false { processes.attach() }
+        NSApp.activate()
+        cleanerWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        processes.detach()
     }
 }
