@@ -11,6 +11,14 @@ xcodebuild -project DevPulse.xcodeproj -scheme DevPulse -configuration Debug -de
 open build/Build/Products/Debug/DevPulse.app
 ```
 
+## Install to /Applications
+
+```bash
+scripts/install.sh             # Release build → /Applications/DevPulse.app, relaunches it
+```
+
+Run it again to update. Quit with `pkill DevPulse` (no Dock icon, no menu).
+
 ## Test
 
 ```bash
