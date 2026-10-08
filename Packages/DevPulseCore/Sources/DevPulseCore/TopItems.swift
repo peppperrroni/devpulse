@@ -8,6 +8,13 @@ public struct TopItem: Identifiable, Hashable, Sendable {
 
     public var id: String { path }
 
+    public init(path: String, size: Int64, kind: NodeKind, modified: Date? = nil) {
+        self.path = path
+        self.size = size
+        self.kind = kind
+        self.modified = modified
+    }
+
     init(_ node: ScanNode) {
         path = node.path
         size = node.size
