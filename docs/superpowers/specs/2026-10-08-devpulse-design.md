@@ -165,8 +165,11 @@ site: `01 / Процессы`, numbered rows `01…05`. The theme follows the sy
   **Показать в Finder** and **Удалить навсегда** (danger).
 - The files table has columns Path (`~`-abbreviated, middle truncation), Size,
   Modified. Multi-select is allowed.
-- Settings (scan interval) is a small popover from a gear in the window toolbar.
-  There is no separate settings window.
+- Settings (scan interval, «Запускать при входе») is a small popover from a gear in
+  the window toolbar. There is no separate settings window.
+- Launch at login uses `SMAppService.mainApp`. It is switched on once, on the first
+  launch of the `/Applications` copy (`scripts/install.sh`). After that the toggle is
+  the user's, and development builds are never registered.
 
 ## 6. Errors and action safety
 

@@ -12,6 +12,8 @@ struct FilesTab<Tabs: View>: View {
     @State private var filter: Filter = .all
     @State private var confirming: [TopItem] = []
     @State private var showSettings = false
+    @State private var launchAtLogin = false
+    @State private var loginItemError: String?
 
     private var rows: [TopItem] {
         switch filter {
@@ -143,7 +145,19 @@ struct FilesTab<Tabs: View>: View {
             SectionLabel(text: "Настройки")
             Stepper("Скан каждые \(disk.intervalHours) ч", value: $disk.intervalHours, in: 1...48)
                 .font(Fonts.body(12.5))
+            Toggle("Запускать при входе", isOn: Binding(
+                get: { launchAtLogin },
+                set: { on in
+                    do { try LoginItem.set(on) } catch { loginItemError = error.localizedDescription }
+                    launchAtLogin = LoginItem.isEnabled
+                }
+            ))
+            .font(Fonts.body(12.5))
+            if let loginItemError {
+                Text(loginItemError).font(Fonts.body(11)).foregroundStyle(Theme.danger)
+            }
         }
+        .onAppear { launchAtLogin = LoginItem.isEnabled; loginItemError = nil }
         .padding(14)
         .frame(width: 240)
     }
