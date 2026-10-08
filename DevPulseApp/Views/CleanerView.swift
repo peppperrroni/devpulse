@@ -8,7 +8,7 @@ struct CleanerView: View {
         VStack(spacing: 0) {
             switch navigation.tab {
             case .processes: ProcessesTab(tabs: tabs($navigation.tab))
-            case .files: Text("Файлы").frame(maxWidth: .infinity, maxHeight: .infinity)   // Task 12
+            case .files: FilesTab(tabs: tabs($navigation.tab))
             }
         }
         .frame(minWidth: 640, minHeight: 440)

@@ -11,6 +11,14 @@ enum Snapshots {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         delegate.processes.refresh()
         Task {
+            if ProcessInfo.processInfo.environment["DEVPULSE_SNAPSHOT_SCAN"] != nil {
+                let start = Date()
+                delegate.disk.rescan()
+                while delegate.disk.progress != nil { try? await Task.sleep(for: .milliseconds(500)) }
+                let r = delegate.disk.result
+                print("scan: \(Int(Date().timeIntervalSince(start))) s, root \(Fmt.bytes(r?.root.size ?? 0)), skipped \(r?.skipped.count ?? 0)")
+                for item in delegate.disk.allTop.prefix(10) { print("  \(Fmt.bytes(item.size))  \(item.kind)  \(item.path)") }
+            }
             try? await Task.sleep(for: .milliseconds(600))
             delegate.processes.refresh()   // second sample carries CPU %
             for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
