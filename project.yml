@@ -9,8 +9,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
 targets:
   DevPulse:
     type: application
@@ -23,16 +23,18 @@ targets:
       path: DevPulseApp/Info.plist
       properties:
         CFBundleDisplayName: DevPulse
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDevelopmentRegion: ru
         LSUIElement: true
+        LSApplicationCategoryType: public.app-category.developer-tools
         NSHumanReadableCopyright: ""
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.peppperrroni.devpulse
         PRODUCT_NAME: DevPulse
         CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: "Apple Development: peppperrroni@gmail.com (5YY272N32R)"
-        DEVELOPMENT_TEAM: ZGPM9P8T4A
+        CODE_SIGN_IDENTITY: "-"   # ad-hoc; scripts/install.sh signs with your Apple Development identity
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
         SWIFT_STRICT_CONCURRENCY: complete

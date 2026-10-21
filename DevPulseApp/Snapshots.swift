@@ -22,14 +22,14 @@ enum Snapshots {
             try? await Task.sleep(for: .milliseconds(600))
             delegate.processes.refresh()   // second sample carries CPU %
             for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                render(delegate.popoverView(), size: nil, appearance: appearance,
+                render(delegate.popoverView().background(.background), size: nil, appearance: appearance,
                        to: dir.appending(path: "popover-\(name).png"))
                 render(statusTitle(delegate), size: NSSize(width: 160, height: 24), appearance: appearance,
                        to: dir.appending(path: "status-\(name).png"))
                 for tab in [CleanerTab.processes, .files] {
                     delegate.navigation.tab = tab
-                    render(delegate.cleanerView(), size: NSSize(width: 760, height: 520), appearance: appearance,
-                           to: dir.appending(path: "window-\(tab)-\(name).png"))
+                    await renderWindow(delegate.makeCleanerWindow(), appearance: appearance,
+                                       to: dir.appending(path: "window-\(tab)-\(name).png"))
                 }
             }
             NSApp.terminate(nil)
@@ -40,6 +40,20 @@ enum Snapshots {
         Text(AttributedString(StatusTitle.make(delegate.system.snapshot)))
             .padding(4)
             .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// Real window off-screen, including title bar and the bridged SwiftUI toolbar.
+    private static func renderWindow(_ window: NSWindow, appearance: NSAppearance.Name, to url: URL) async {
+        window.appearance = NSAppearance(named: appearance)
+        window.setFrameOrigin(NSPoint(x: -6000, y: -6000))
+        window.orderFront(nil)
+        try? await Task.sleep(for: .milliseconds(700))
+        if let frame = window.contentView?.superview,
+           let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) {
+            frame.cacheDisplay(in: frame.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        }
+        window.orderOut(nil)
     }
 
     private static func render<V: View>(_ view: V, size: NSSize?, appearance: NSAppearance.Name, to url: URL) {

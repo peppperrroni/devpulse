@@ -125,48 +125,41 @@ that is corrupt or has the wrong schema version is discarded and a rescan runs.
 
 ## 5. UI
 
-Visual language after getartcraft.com. Tokens are defined once and used everywhere:
+**Native macOS design (since 0.2.0).** The first version followed getartcraft.com
+(custom colour tokens, bundled Inter/Geist Mono, numbered rows, coloured `app`/`proc`
+chips). On 2026-10-21 it was replaced on request with a first-party look: system
+controls, semantic colours, SF Pro / SF Mono digits (`.monospacedDigit()`), and system
+materials. Liquid Glass comes from the system itself: the `NSPopover` and the
+unified window toolbar on macOS 26. There is no custom blur or `.glassEffect` on
+content. Colour is used only for state: `systemGreen/Orange/Red` dots in the menu bar,
+and a gauge tint that turns orange/red only when the value needs attention.
 
-| token | light | dark |
-|---|---|---|
-| `bg` | `#f2f1ee` | `#101014` |
-| `raised` | `#faf9f7` | `#1a1a20` |
-| `sunken` | `#e9e8e4` | `#0a0a0d` |
-| `ink` | `#101014` | `#f2f1ee` |
-| `mute` | `#6b6a66` | `#8d8c88` |
-| `accent` | `#2d81ff` | `#2d81ff` |
-| `danger` | `#b3261e` | `#b3261e` |
-
-Fonts: **SF heavy expanded** for numeric headings, **Inter** (bundled, OFL) for body,
-**Geist Mono** (bundled, OFL) for labels, numbers and section markers, **New York
-italic** for small accents. Archivo and Instrument Serif were the site's choice but
-have no Cyrillic glyphs (checked with CoreText), and the UI copy is Russian. If a font fails to load, SF is used. Section markers follow the
-site: `01 / Процессы`, numbered rows `01…05`. The theme follows the system.
-
-**Popover (variant B, ~340 pt tall, 340 pt wide).**
-- Header: "DevPulse" plus a one-line serif status ("всё спокойно" / "память под
-  давлением" / "мало места").
-- Two compact gauges in a row: RAM (GB used, meter coloured by pressure) and Disk
-  (GB free, accent meter).
-- Segmented control **Процессы / Диск**, then 5 numbered rows (name + RAM, or
-  path + size).
-- Footer: "скан N ч назад" and an **Открыть cleaner** button.
+**Popover (~320 pt wide).**
+- Header: "DevPulse" and a gear menu (launch at login, scan interval, Quit — the app
+  has no Dock icon or menu bar, so Quit lives here).
+- Memory and Disk rows: label with an SF Symbol, linear capacity gauge,
+  "used of total" or "free" detail.
+- Segmented **Процессы / Диск**, then 5 rows separated by dividers (name + value).
+- Footer: last-updated time, a refresh button and **Открыть DevPulse** (default action).
 - Clicking a row opens the window on the matching tab with that row selected.
 
-**Window (variant A, segmented tabs on top).**
-- *Processes tab:* header `01 / Процессы · <count>` with total used RAM, the segmented
-  control on the right, a filter field, and actions on the selected row:
-  **Перезапустить** (enabled for GUI apps only) and **Завершить** (danger).
-- The process table has columns Name, Type (`app` / `proc` chip), RAM, CPU. It is
-  sortable, sorted by RAM descending by default, and refreshes every 2 s while the
-  window is visible. Multi-select is allowed for Завершить.
-- *Files tab:* header `02 / Файлы · скан N ч назад · ⟳` showing free and total GB,
-  progress while scanning, a filter All / Files / Folders, and actions
-  **Показать в Finder** and **Удалить навсегда** (danger).
-- The files table has columns Path (`~`-abbreviated, middle truncation), Size,
-  Modified. Multi-select is allowed.
-- Settings (scan interval, «Запускать при входе») is a small popover from a gear in
-  the window toolbar. There is no separate settings window.
+**Window.** A standard titled window. SwiftUI `.toolbar` and `.searchable` are
+bridged into a unified `NSToolbar` (`sceneBridgingOptions`). The toolbar holds the
+section picker, the gear menu, search and the tab's actions.
+- *Processes:* summary line (memory used of total, process count, gauge). Table
+  columns: Name (app or executable icon instead of chips), Memory, CPU. The table is
+  sortable, sorted by memory by default, and refreshes every 2 s while visible.
+  Toolbar: Перезапустить (one app), Завершить (⌘⌫). Context menu: Завершить,
+  Перезапустить, Показать в Finder, Скопировать путь. Force quit asks for
+  confirmation.
+- *Files:* summary line (free of total, scan age or progress) and the FDA hint strip.
+  Table columns: Имя, Расположение, Размер, Изменён, all sortable. Toolbar: Всё/Файлы/
+  Папки menu, Пересканировать (⌘R) / Остановить (⌘.), Показать в Finder (⌥⌘R),
+  Удалить навсегда (⌘⌫, native confirmation dialog). A folder and a file inside it
+  are collapsed to the folder before deletion.
+- Disabled toolbar actions explain why in their tooltip.
+- Memory is shown in binary units, as in Activity Monitor; disk in decimal, as in
+  Finder.
 - Launch at login uses `SMAppService.mainApp`. It is switched on once, on the first
   launch of the `/Applications` copy (`scripts/install.sh`). After that the toggle is
   the user's, and development builds are never registered.

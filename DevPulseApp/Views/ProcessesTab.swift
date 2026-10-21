@@ -1,18 +1,23 @@
 import DevPulseCore
 import SwiftUI
 
-struct ProcessesTab<Tabs: View>: View {
-    let tabs: Tabs
+struct ProcessesTab: View {
     @Environment(ProcessStore.self) private var store
     @Environment(SystemStore.self) private var system
     @Environment(Navigation.self) private var navigation
     @State private var filter = ""
     @State private var sortOrder = [KeyPathComparator(\ProcessEntry.memory, order: .reverse)]
+    @State private var forceKillTarget: ProcessEntry?
 
     private var rows: [ProcessEntry] {
         let filtered = filter.isEmpty ? store.processes
             : store.processes.filter { $0.name.localizedCaseInsensitiveContains(filter) || $0.path.localizedCaseInsensitiveContains(filter) }
         return filtered.sorted(using: sortOrder)
+    }
+
+    /// Only rows the user can see: a selection hidden by the filter is never acted on.
+    private var actionable: Set<pid_t> {
+        ProcessActions.targets(selected: navigation.selectedPIDs, visible: rows)
     }
 
     private var selectedApp: ProcessEntry? {
@@ -21,73 +26,82 @@ struct ProcessesTab<Tabs: View>: View {
         return rows.first { $0.pid == pid && $0.isApp }
     }
 
-    /// Only rows the user can see: a selection hidden by the filter is never acted on.
-    private var actionable: Set<pid_t> {
-        ProcessActions.targets(selected: navigation.selectedPIDs, visible: rows)
-    }
-
     var body: some View {
         @Bindable var navigation = navigation
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    SectionLabel(text: "01 / Процессы · \(store.processes.count)")
-                    Text("\(Fmt.bytes(system.snapshot.ramUsed)) занято").font(Fonts.display(20)).foregroundStyle(Theme.ink)
-                }
-                Spacer()
-                tabs
-            }
-            .padding([.horizontal, .top], 16)
-
-            HStack {
-                TextField("фильтр", text: $filter).textFieldStyle(.roundedBorder).frame(width: 200)
-                Spacer()
-                Button("Перезапустить") {
-                    if let app = selectedApp { Task { await store.relaunch(app.pid) } }
-                }
-                .buttonStyle(DPButtonStyle())
-                .disabled(selectedApp == nil)
-                Button("Завершить") { store.terminate(actionable) }
-                    .buttonStyle(DPButtonStyle(kind: .danger))
-                    .disabled(actionable.isEmpty)
-            }
-            .padding(16)
-
+        let s = system.snapshot
+        VStack(spacing: 0) {
+            SummaryBar(title: "\(Fmt.memory(s.ramUsed)) занято",
+                       detail: "из \(Fmt.memory(s.ramTotal)) · \(Fmt.processes(store.processes.count))",
+                       fraction: Double(s.ramPercent) / 100, tint: s.ramHealth.tint) { EmptyView() }
+            Divider()
             Table(rows, selection: $navigation.selectedPIDs, sortOrder: $sortOrder) {
                 TableColumn("Имя", value: \.name) { p in
                     HStack(spacing: 6) {
-                        Text(p.name).font(Fonts.body(12.5)).lineLimit(1)
+                        Image(nsImage: store.icon(for: p)).resizable().frame(width: 16, height: 16)
+                        Text(p.name).lineLimit(1)
                         if let note = store.notes[p.pid] {
-                            Text(note).font(Fonts.mono(10.5)).foregroundStyle(Theme.danger)
+                            Text(note).font(.caption).foregroundStyle(.secondary)
                         }
                         if store.forceKillOffered.contains(p.pid) {
-                            Button("Убить принудительно") { store.forceKill(p.pid) }
-                                .buttonStyle(DPButtonStyle(kind: .danger)).controlSize(.small)
+                            Button("Завершить принудительно…") { forceKillTarget = p }
+                                .controlSize(.small)
                         }
                     }
                     .help(p.path)
                 }
-                TableColumn("Тип") { p in
-                    Text(p.isApp ? "app" : "proc")
-                        .font(Fonts.mono(10, .medium))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(chip(p.isApp)))
+                TableColumn("Память", value: \.memory) { p in
+                    Text(Fmt.memory(p.memory)).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .width(56)
-                TableColumn("RAM", value: \.memory) { p in
-                    Text(Fmt.bytes(p.memory)).font(Fonts.mono(11.5, .medium)).frame(maxWidth: .infinity, alignment: .trailing)
+                .width(min: 70, ideal: 90, max: 120)
+                TableColumn("ЦП", value: \.cpuPercent) { p in
+                    Text(p.cpuPercent, format: .number.precision(.fractionLength(0)))
+                        .monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .width(90)
-                TableColumn("CPU", value: \.cpuPercent) { p in
-                    Text(String(format: "%.0f%%", p.cpuPercent)).font(Fonts.mono(11.5)).frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .width(60)
+                .width(min: 40, ideal: 56, max: 80)
             }
-            .scrollContentBackground(.hidden)
+            .contextMenu(forSelectionType: pid_t.self) { pids in
+                let targets = ProcessActions.targets(selected: pids, visible: rows)
+                Button("Завершить") { store.terminate(targets) }.disabled(targets.isEmpty)
+                if pids.count == 1, let p = rows.first(where: { $0.pid == pids.first }) {
+                    if p.isApp { Button("Перезапустить") { Task { await store.relaunch(p.pid) } } }
+                    Divider()
+                    Button("Показать в Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p.path)])
+                    }
+                    .disabled(p.path.isEmpty)
+                    Button("Скопировать путь") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(p.path, forType: .string)
+                    }
+                    .disabled(p.path.isEmpty)
+                }
+            }
         }
-    }
+        .searchable(text: $filter, placement: .toolbar, prompt: "Поиск процессов")
+        .toolbar {
+            ToolbarItemGroup {
+                Button {
+                    if let app = selectedApp { Task { await store.relaunch(app.pid) } }
+                } label: {
+                    Label("Перезапустить", systemImage: "arrow.trianglehead.2.clockwise")
+                }
+                .disabled(selectedApp == nil)
+                .help(selectedApp == nil ? "Выберите одно приложение" : "Закрыть и снова открыть приложение")
 
-    private func chip(_ isApp: Bool) -> Color {
-        isApp ? Color(nsColor: NSColor(hex: 0xA6E04A)).opacity(0.25) : Color(nsColor: NSColor(hex: 0xC08FFF)).opacity(0.2)
+                Button(role: .destructive) { store.terminate(actionable) } label: {
+                    Label("Завершить", systemImage: "xmark.circle")
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(actionable.isEmpty)
+                .help(actionable.isEmpty ? "Выберите процессы, которые можно завершить" : "Завершить выбранные (⌘⌫)")
+            }
+        }
+        .confirmationDialog("Завершить «\(forceKillTarget?.name ?? "")» принудительно?",
+                            isPresented: Binding(get: { forceKillTarget != nil }, set: { if !$0 { forceKillTarget = nil } }),
+                            presenting: forceKillTarget) { p in
+            Button("Завершить принудительно", role: .destructive) { store.forceKill(p.pid) }
+        } message: { _ in
+            Text("Процесс не ответил на обычное завершение. Несохранённые данные будут потеряны.")
+        }
     }
 }

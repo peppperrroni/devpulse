@@ -22,7 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var cleanerWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Fonts.register()
         #if DEBUG
         if let dir = ProcessInfo.processInfo.environment["DEVPULSE_SNAPSHOT"] {
             Snapshots.write(to: URL(fileURLWithPath: dir), delegate: self)
@@ -33,10 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover)
-        system.onChange = { [weak self] snapshot in
-            self?.statusItem.button?.attributedTitle = StatusTitle.make(snapshot)
-        }
-        statusItem.button?.attributedTitle = StatusTitle.make(system.snapshot)
+        system.onChange = { [weak self] snapshot in self?.updateStatusItem(snapshot) }
+        updateStatusItem(system.snapshot)
         system.start()
         disk.start()
 
@@ -45,6 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         let host = NSHostingController(rootView: popoverView())
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
+    }
+
+    private func updateStatusItem(_ snapshot: SystemSnapshot) {
+        statusItem.button?.attributedTitle = StatusTitle.make(snapshot)
+        statusItem.button?.setAccessibilityLabel(StatusTitle.accessibilityLabel(snapshot))
     }
 
     func popoverView() -> some View {
@@ -79,10 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         if let pid { navigation.selectedPIDs = [pid] }
         if let path { navigation.selectedPaths = [path] }
         if cleanerWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: cleanerView()))
-            window.title = "DevPulse"
-            window.setContentSize(NSSize(width: 760, height: 520))
-            window.isReleasedWhenClosed = false
+            let window = makeCleanerWindow()
             window.delegate = self
             window.center()
             cleanerWindow = window
@@ -91,6 +90,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         NSApp.activate()
         cleanerWindow?.deminiaturize(nil)
         cleanerWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Standard titled window; SwiftUI's .toolbar/.searchable are bridged into a
+    /// unified NSToolbar, so the chrome and its Liquid Glass come from the system.
+    func makeCleanerWindow() -> NSWindow {
+        let host = NSHostingController(rootView: cleanerView())
+        host.sceneBridgingOptions = [.toolbars, .title]
+        let window = NSWindow(contentViewController: host)
+        window.title = "DevPulse"
+        window.toolbarStyle = .unified
+        window.setContentSize(NSSize(width: 820, height: 540))
+        window.setFrameAutosaveName("DevPulseCleaner")
+        window.isReleasedWhenClosed = false
+        return window
     }
 
     func windowWillClose(_ notification: Notification) {

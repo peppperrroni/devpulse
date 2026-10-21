@@ -1,6 +1,7 @@
 import AppKit
 import DevPulseCore
 import Observation
+import UniformTypeIdentifiers
 
 @Observable @MainActor
 final class ProcessStore {
@@ -9,6 +10,9 @@ final class ProcessStore {
     private(set) var notes: [pid_t: String] = [:]
     /// Rows that ignored SIGTERM for 3 s and now offer SIGKILL.
     private(set) var forceKillOffered: Set<pid_t> = []
+    private(set) var updatedAt: Date?
+
+    @ObservationIgnored private var icons: [String: NSImage] = [:]
 
     @ObservationIgnored private let sampler = ProcessSampler()
     @ObservationIgnored private var visibility = VisibilityTracker()
@@ -39,8 +43,19 @@ final class ProcessStore {
             apps[app.processIdentifier] = app.localizedName ?? app.bundleURL?.deletingPathExtension().lastPathComponent
         }
         processes = sampler.sample(apps: apps)
+        updatedAt = Date()
         let alive = Set(processes.map(\.pid))
         forceKillOffered.formIntersection(alive)
+        notes = notes.filter { alive.contains($0.key) }
+    }
+
+    /// App icon for apps, generic executable icon otherwise; cached per path.
+    func icon(for p: ProcessEntry) -> NSImage {
+        if let cached = icons[p.path] { return cached }
+        let image = NSRunningApplication(processIdentifier: p.pid)?.icon
+            ?? NSWorkspace.shared.icon(for: .unixExecutable)
+        icons[p.path] = image
+        return image
     }
 
     func terminate(_ pids: Set<pid_t>) {

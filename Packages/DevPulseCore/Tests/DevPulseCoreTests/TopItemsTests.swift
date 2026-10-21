@@ -61,6 +61,16 @@ struct TopItemsTests {
         #expect(three.last?.path == "/Users/u/dl.xip")
     }
 
+    @Test func nestedSelectionKeepsOnlyOutermost() {
+        // Folder and a file inside it: deleting both double-counts and reports a spurious failure.
+        let items = [
+            TopItem(path: "/Users/u/VMs/disk.img", size: 40, kind: .file),
+            TopItem(path: "/Users/u/VMs", size: 40, kind: .folder),
+            TopItem(path: "/Users/u/VMs2", size: 5, kind: .folder),
+        ]
+        #expect(TopItems.withoutNested(items).map(\.path) == ["/Users/u/VMs", "/Users/u/VMs2"])
+    }
+
     @Test func protectedAncestorCheck() {
         #expect(ProtectedPaths.isProtected("/Users/u/Library", home: home))
         #expect(!ProtectedPaths.isProtected("/Users/u/Library/Caches", home: home))

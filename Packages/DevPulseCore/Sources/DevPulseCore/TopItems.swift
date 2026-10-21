@@ -51,6 +51,11 @@ public enum TopItems {
             .prefix(limit).map { $0 }
     }
 
+    /// Drops items inside another selected item, keeping the original order.
+    public static func withoutNested(_ items: [TopItem]) -> [TopItem] {
+        items.filter { item in !items.contains { item.path.hasPrefix($0.path + "/") } }
+    }
+
     private static func flatten(_ node: ScanNode) -> [ScanNode] {
         [node] + node.children.flatMap(flatten)
     }

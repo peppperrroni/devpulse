@@ -2,86 +2,134 @@ import AppKit
 import DevPulseCore
 import SwiftUI
 
-struct FilesTab<Tabs: View>: View {
-    enum Filter: Hashable { case all, files, folders }
+extension TopItem {
+    var name: String { (path as NSString).lastPathComponent }
+    var location: String { abbreviate((path as NSString).deletingLastPathComponent) }
+    var modifiedOrDistantPast: Date { modified ?? .distantPast }
+}
 
-    let tabs: Tabs
+struct FilesTab: View {
+    enum Kind: Hashable { case all, files, folders }
+
     @Environment(DiskStore.self) private var disk
     @Environment(SystemStore.self) private var system
     @Environment(Navigation.self) private var navigation
-    @State private var filter: Filter = .all
+    @State private var kind: Kind = .all
+    @State private var filter = ""
+    @State private var sortOrder = [KeyPathComparator(\TopItem.size, order: .reverse)]
     @State private var confirming: [TopItem] = []
-    @State private var showSettings = false
-    @State private var launchAtLogin = false
-    @State private var loginItemError: String?
 
     private var rows: [TopItem] {
-        switch filter {
+        let base = switch kind {
         case .all: disk.allTop
         case .files: disk.filesTop
         case .folders: disk.foldersTop
         }
+        let filtered = filter.isEmpty ? base : base.filter { $0.path.localizedCaseInsensitiveContains(filter) }
+        return filtered.sorted(using: sortOrder)
     }
 
+    /// Visible selected rows only; a folder and a file inside it collapse to the folder.
     private var selectedItems: [TopItem] {
-        rows.filter { navigation.selectedPaths.contains($0.path) }
+        TopItems.withoutNested(rows.filter { navigation.selectedPaths.contains($0.path) })
     }
 
     var body: some View {
         @Bindable var navigation = navigation
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            if disk.needsFullDiskAccess { fdaHint }
-            HStack {
-                Segmented(options: [(.all, "Все"), (.files, "Файлы"), (.folders, "Папки")], selection: $filter)
-                    .frame(width: 240)
-                Spacer()
-                Button("Показать в Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting(selectedItems.map { URL(fileURLWithPath: $0.path) })
-                }
-                .buttonStyle(DPButtonStyle())
-                .disabled(selectedItems.isEmpty)
-                Button(disk.isDeleting ? "Удаляю…" : "Удалить навсегда") { confirming = selectedItems }
-                    .buttonStyle(DPButtonStyle(kind: .danger))
-                    .disabled(selectedItems.isEmpty || disk.isDeleting)
+        let s = system.snapshot
+        VStack(spacing: 0) {
+            SummaryBar(title: "\(Fmt.bytes(s.diskFree)) свободно",
+                       detail: "из \(Fmt.bytes(s.diskTotal)) · \(scanLine)",
+                       fraction: Double(s.diskUsedPercent) / 100, tint: s.diskHealth.tint) {
+                if disk.progress != nil { ProgressView().controlSize(.small) }
             }
-            .padding(16)
-
-            Table(rows, selection: $navigation.selectedPaths) {
-                TableColumn("Путь") { item in
+            if disk.needsFullDiskAccess { fdaHint }
+            Divider()
+            Table(rows, selection: $navigation.selectedPaths, sortOrder: $sortOrder) {
+                TableColumn("Имя", value: \.name) { item in
                     HStack(spacing: 6) {
-                        Image(systemName: item.kind == .folder ? "folder" : "doc").foregroundStyle(Theme.mute)
-                        Text(abbreviate(item.path)).font(Fonts.body(12.5)).lineLimit(1).truncationMode(.middle)
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: item.path)).resizable().frame(width: 16, height: 16)
+                        Text(item.name).lineLimit(1)
                     }
                     .help(item.path)
                 }
-                TableColumn("Размер") { item in
-                    Text(Fmt.bytes(item.size)).font(Fonts.mono(11.5, .medium)).frame(maxWidth: .infinity, alignment: .trailing)
+                TableColumn("Расположение", value: \.location) { item in
+                    Text(item.location).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
                 }
-                .width(90)
-                TableColumn("Изменён") { item in
-                    Text(Fmt.modified(item.modified)).font(Fonts.mono(11.5)).foregroundStyle(Theme.mute)
+                TableColumn("Размер", value: \.size) { item in
+                    Text(Fmt.bytes(item.size)).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .width(min: 70, ideal: 90, max: 120)
+                TableColumn("Изменён", value: \.modifiedOrDistantPast) { item in
+                    Text(Fmt.modified(item.modified)).monospacedDigit().foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .width(80)
+                .width(min: 60, ideal: 80, max: 110)
             }
-            .scrollContentBackground(.hidden)
+            .contextMenu(forSelectionType: String.self) { paths in
+                let items = TopItems.withoutNested(rows.filter { paths.contains($0.path) })
+                Button("Показать в Finder") { reveal(items) }.disabled(items.isEmpty)
+                Button("Скопировать путь") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(items.map(\.path).joined(separator: "\n"), forType: .string)
+                }
+                .disabled(items.isEmpty)
+                Divider()
+                Button("Удалить навсегда…", role: .destructive) { confirming = items }.disabled(items.isEmpty || disk.isDeleting)
+            }
             .overlay {
                 if rows.isEmpty {
-                    Text(disk.progress == nil ? "Скан ещё не выполнен" : "Сканирую…")
-                        .font(Fonts.body(13)).foregroundStyle(Theme.mute)
+                    ContentUnavailableView {
+                        Label(emptyTitle, systemImage: disk.progress == nil ? "internaldrive" : "magnifyingglass")
+                    } description: {
+                        if disk.result == nil && disk.progress == nil { Text("Нажмите «Пересканировать» (⌘R)") }
+                    }
                 }
             }
         }
-        .sheet(isPresented: Binding(get: { !confirming.isEmpty }, set: { if !$0 { confirming = [] } })) {
-            ConfirmDeleteSheet(items: confirming) {
+        .searchable(text: $filter, placement: .toolbar, prompt: "Поиск по пути")
+        .toolbar {
+            ToolbarItemGroup {
+                Picker("Показывать", selection: $kind) {
+                    Text("Всё").tag(Kind.all)
+                    Text("Файлы").tag(Kind.files)
+                    Text("Папки").tag(Kind.folders)
+                }
+                .pickerStyle(.menu)
+                .help("Что показывать")
+
+                if disk.progress == nil {
+                    Button { disk.rescan() } label: { Label("Пересканировать", systemImage: "arrow.clockwise") }
+                        .keyboardShortcut("r")
+                        .help("Пересканировать домашнюю папку (⌘R)")
+                } else {
+                    Button { disk.cancelScan() } label: { Label("Остановить скан", systemImage: "stop.circle") }
+                        .keyboardShortcut(".")
+                        .help("Остановить скан (⌘.) — останется прошлый результат")
+                }
+
+                Button { reveal(selectedItems) } label: { Label("Показать в Finder", systemImage: "folder") }
+                    .keyboardShortcut("r", modifiers: [.command, .option])
+                    .disabled(selectedItems.isEmpty)
+                    .help(selectedItems.isEmpty ? "Выберите файл или папку" : "Показать в Finder (⌥⌘R)")
+
+                Button(role: .destructive) { confirming = selectedItems } label: {
+                    Label("Удалить навсегда", systemImage: "trash")
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(selectedItems.isEmpty || disk.isDeleting)
+                .help(disk.isDeleting ? "Идёт удаление…" : selectedItems.isEmpty ? "Выберите файл или папку" : "Удалить навсегда (⌘⌫)")
+            }
+        }
+        .confirmationDialog(confirmTitle, isPresented: Binding(get: { !confirming.isEmpty }, set: { if !$0 { confirming = [] } })) {
+            Button("Удалить навсегда", role: .destructive) {
                 let items = confirming
                 confirming = []
                 navigation.selectedPaths = []
                 Task { await disk.delete(items) }
-            } cancel: {
-                confirming = []
             }
+        } message: {
+            Text(confirmMessage)
         }
         .alert(reportTitle, isPresented: Binding(get: { disk.lastReport != nil }, set: { if !$0 { disk.dismissReport() } })) {
             Button("OK") { disk.dismissReport() }
@@ -90,76 +138,46 @@ struct FilesTab<Tabs: View>: View {
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    SectionLabel(text: "02 / Файлы · \(scanLine)")
-                    if disk.progress == nil {
-                        Button { disk.rescan() } label: { Image(systemName: "arrow.clockwise") }
-                            .buttonStyle(.plain).foregroundStyle(Theme.mute).help("Пересканировать")
-                    } else {
-                        Button { disk.cancelScan() } label: { Image(systemName: "xmark.circle") }
-                            .buttonStyle(.plain).foregroundStyle(Theme.mute).help("Остановить скан")
-                    }
-                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                        .buttonStyle(.plain).foregroundStyle(Theme.mute)
-                        .popover(isPresented: $showSettings) { settings }
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(Fmt.bytes(system.snapshot.diskFree)) свободно").font(Fonts.display(20)).foregroundStyle(Theme.ink)
-                    Text("из \(Fmt.bytes(system.snapshot.diskTotal))").font(Fonts.serif(16)).foregroundStyle(Theme.mute)
-                }
-            }
-            Spacer()
-            tabs
-        }
-        .padding([.horizontal, .top], 16)
+    private func reveal(_ items: [TopItem]) {
+        NSWorkspace.shared.activateFileViewerSelecting(items.map { URL(fileURLWithPath: $0.path) })
     }
 
     private var scanLine: String {
-        if let p = disk.progress { return "сканирую · \(Fmt.bytes(p.bytes)) · \(p.items) файлов" }
+        if let p = disk.progress { return "сканирование: \(Fmt.bytes(p.bytes)), \(Fmt.files(p.items))" }
         guard let date = disk.result?.date else { return "скан не выполнен" }
         return "скан \(Fmt.ago(date))"
     }
 
-    private var fdaHint: some View {
-        HStack {
-            Text("Часть ~/Library недоступна — выдай DevPulse «Полный доступ к диску», чтобы скан видел всё.")
-                .font(Fonts.body(12)).foregroundStyle(Theme.ink)
-            Spacer()
-            Button("Открыть настройки") {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
-            }
-            .buttonStyle(DPButtonStyle())
-        }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: NSColor(hex: 0xFFB347)).opacity(0.2)))
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
+    private var emptyTitle: String {
+        if disk.progress != nil { return "Сканирование…" }
+        if disk.result == nil { return "Диск ещё не сканировался" }
+        return filter.isEmpty ? "Нет файлов больше 50 МБ" : "Ничего не найдено"
     }
 
-    private var settings: some View {
-        @Bindable var disk = disk
-        return VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(text: "Настройки")
-            Stepper("Скан каждые \(disk.intervalHours) ч", value: $disk.intervalHours, in: 1...48)
-                .font(Fonts.body(12.5))
-            Toggle("Запускать при входе", isOn: Binding(
-                get: { launchAtLogin },
-                set: { on in
-                    do { try LoginItem.set(on) } catch { loginItemError = error.localizedDescription }
-                    launchAtLogin = LoginItem.isEnabled
-                }
-            ))
-            .font(Fonts.body(12.5))
-            if let loginItemError {
-                Text(loginItemError).font(Fonts.body(11)).foregroundStyle(Theme.danger)
+    private var fdaHint: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock").foregroundStyle(.secondary)
+            Text("Часть ~/Library недоступна. Разрешите DevPulse «Полный доступ к диску», чтобы скан видел всё.")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button("Открыть настройки…") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
             }
+            .controlSize(.small)
         }
-        .onAppear { launchAtLogin = LoginItem.isEnabled; loginItemError = nil }
-        .padding(14)
-        .frame(width: 240)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.quaternary.opacity(0.5))
+    }
+
+    private var confirmTitle: String {
+        confirming.count == 1 ? "Удалить «\(confirming[0].name)» навсегда?" : "Удалить \(Fmt.plural(confirming.count, "объект", "объекта", "объектов")) навсегда?"
+    }
+
+    private var confirmMessage: String {
+        let total = Fmt.bytes(confirming.reduce(0) { $0 + $1.size })
+        return "Будет освобождено \(total). Объекты не попадут в Корзину — удаление необратимо."
     }
 
     private var reportTitle: String {
@@ -169,40 +187,6 @@ struct FilesTab<Tabs: View>: View {
 
     private var reportMessage: String {
         guard let r = disk.lastReport, !r.failures.isEmpty else { return "" }
-        return "Не удалось:\n" + r.failures.map { "\(abbreviate($0.path)) — \($0.reason)" }.joined(separator: "\n")
-    }
-}
-
-struct ConfirmDeleteSheet: View {
-    let items: [TopItem]
-    let confirm: () -> Void
-    let cancel: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionLabel(text: "Удалить навсегда")
-            Text(Fmt.bytes(items.reduce(0) { $0 + $1.size })).font(Fonts.display(22)).foregroundStyle(Theme.ink)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(items) { item in
-                        HStack {
-                            Text(abbreviate(item.path)).font(Fonts.mono(11.5)).lineLimit(1).truncationMode(.middle)
-                            Spacer()
-                            Text(Fmt.bytes(item.size)).font(Fonts.mono(11.5, .medium))
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: 160)
-            Text("Удаление необратимо — в Корзину не попадёт.").font(Fonts.body(12)).foregroundStyle(Theme.danger)
-            HStack {
-                Spacer()
-                Button("Отмена", action: cancel).buttonStyle(DPButtonStyle()).keyboardShortcut(.cancelAction)
-                Button("Удалить навсегда", action: confirm).buttonStyle(DPButtonStyle(kind: .danger))
-            }
-        }
-        .padding(20)
-        .frame(width: 440)
-        .background(Theme.bg)
+        return "Не удалось удалить:\n" + r.failures.map { "\(abbreviate($0.path)) — \($0.reason)" }.joined(separator: "\n")
     }
 }
