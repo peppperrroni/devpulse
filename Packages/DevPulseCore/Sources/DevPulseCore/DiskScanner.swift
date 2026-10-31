@@ -30,7 +30,14 @@ public struct DiskScanner: Sendable {
         return ScanResult(date: Date(), root: node, skipped: state.skipped)
     }
 
+    // One pool per directory: Foundation autoreleases every listed URL and its
+    // resource values, and without draining they live until the whole scan ends
+    // (about 1 KB per file, gigabytes for a home folder).
     private func visit(_ url: URL, kind: NodeKind, modified: Date?, insidePackage: Bool, state: State) throws -> ScanNode {
+        try autoreleasepool { try visitDirectory(url, kind: kind, modified: modified, insidePackage: insidePackage, state: state) }
+    }
+
+    private func visitDirectory(_ url: URL, kind: NodeKind, modified: Date?, insidePackage: Bool, state: State) throws -> ScanNode {
         try Task.checkCancellation()
         let entries: [URL]
         do {

@@ -39,9 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
         popover.behavior = .transient
         popover.delegate = self
-        let host = NSHostingController(rootView: popoverView())
-        host.sizingOptions = .preferredContentSize
-        popover.contentViewController = host
     }
 
     private func updateStatusItem(_ snapshot: SystemSnapshot) {
@@ -61,6 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         } else {
             processes.attach("popover")
             processes.refresh()
+            // Hosted per show: a hidden SwiftUI tree keeps re-evaluating on every
+            // 2 s system tick and leaks the Picker's observation entries each time.
+            let host = NSHostingController(rootView: popoverView())
+            host.sizingOptions = .preferredContentSize
+            popover.contentViewController = host
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
@@ -68,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     func popoverDidClose(_ notification: Notification) {
         processes.detach("popover")
+        popover.contentViewController = nil
     }
 
     func cleanerView() -> some View {
@@ -108,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     func windowWillClose(_ notification: Notification) {
         processes.detach("window")
+        cleanerWindow = nil   // same leak as the popover; the frame is autosaved by name
     }
 
     func windowDidMiniaturize(_ notification: Notification) {
